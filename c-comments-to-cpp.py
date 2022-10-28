@@ -22,12 +22,14 @@
 
 import argparse
 import sys
+import os
 
 
 def convert(in_file, out_file, keep_empty_start_end, drop_empty_lines):
     inside_c_comment = False
     comment_style = "//"
     comment_indent = 0
+    inside_doxygen = False
 
     for line in in_file:
         # Start by dropping trailing whitespace from the input.
@@ -54,9 +56,9 @@ def convert(in_file, out_file, keep_empty_start_end, drop_empty_lines):
             else:
                 if inside_c_comment:
                     if inside_indentation:
+                        # Check for transition from inside of indentation white space to real comments
                         if (k >= comment_indent) or not (line[k] in [" ", "\t"]):
                             inside_indentation = False
-                            out_line += comment_style
                             # Consume up to len(comment_style) chars from the line.
                             for m in range(k, min(k + len(comment_style), len(line))):
                                 if line[m] in [" ", "\t"]:
@@ -67,7 +69,19 @@ def convert(in_file, out_file, keep_empty_start_end, drop_empty_lines):
                                     k += 1
                                 else:
                                     break
+
+                                # Found valid multiline comment, check for real doxygen
+                                if not inside_doxygen:
+                                    text = line[k:].lstrip()
+                                    if len(text) >= 1 and text[0] == "@":
+                                        inside_doxygen = True
+                                        comment_style = "///"
+                                    else:
+                                        # Replace downgrade Doxygen comment
+                                        comment_style = "//"
+                            out_line += comment_style
                             if k < len(line) and not (line[k] in [" ", "\t", "*"]):
+                                # Replace skipped starting symbols on multiline string
                                 out_line += " "
                     if k < len(line):
                         if (
@@ -75,8 +89,10 @@ def convert(in_file, out_file, keep_empty_start_end, drop_empty_lines):
                             and (k + 1) < len(line)
                             and line[k + 1] == "/"
                         ):
+                            # Found end of C style comment
                             inside_c_comment = False
                             start_or_end_line = True
+                            inside_doxygen = False
                             if k > 0 and line[k - 1] == "*":
                                 # Replace '*/' with '**' in case this is a '...*****/'-style line.
                                 out_line += "**"
@@ -91,6 +107,7 @@ def convert(in_file, out_file, keep_empty_start_end, drop_empty_lines):
                         comment_indent = k
                         inside_c_comment = True
                         start_or_end_line = True
+                        inside_doxygen = False
                         comment_style = "//"
                         k += 2
                         if (
@@ -115,10 +132,28 @@ def convert(in_file, out_file, keep_empty_start_end, drop_empty_lines):
                         inside_indentation = False
                     elif line[k] == "/" and (k + 1) < len(line) and line[k + 1] == "/":
                         # Start of C++ style comment.
-                        out_line += line[k:]
+                        first = k
+                        if (k + 2) < len(line) and line[k + 2] == "/":
+                            # Found Doxygen comment
+                            if not inside_doxygen:
+                                if (k + 3) < len(line):
+                                    text = line[(k + 3):].lstrip()
+                                    if len(text) > 0 and text[0] == "@":
+                                        inside_doxygen = True
+                            if not inside_doxygen:
+                                # Separate `if not`` instead of duplicate codes in multiple `else`
+                                # Accidental Doxygen comment. Skip the fisrt extra '/'
+                                first += 1
+                                if (first + 2) >= len(line):
+                                    # Skip empty comment
+                                    first = len(line)
+                        out_line += line[first:]
                         k = len(line)
                     else:
+                        # Normal code
+                        inside_doxygen = False
                         if line[k] == '"':
+                            # Found string
                             inside_string = True
                         out_line += line[k]
                         k += 1
@@ -151,6 +186,11 @@ def main():
         action="store_true",
         help="drop empty lines in comment blocks",
     )
+    parser.add_argument(
+        "--inplace",
+        action="store_true",
+        help="edit specified file in-place"
+    )
     parser.add_argument("infile", nargs="?", help="input file (default: stdin)")
     parser.add_argument("outfile", nargs="?", help="output file (default: stdout)")
     args = parser.parse_args()
@@ -158,10 +198,18 @@ def main():
     # Select input and output files.
     in_file = sys.stdin
     out_file = sys.stdout
+
     if args.infile:
         in_file = open(args.infile, "r", encoding="utf8")
-    if args.outfile:
-        out_file = open(args.outfile, "w", encoding="utf8")
+    # Defaults to output to outfile
+    outfile = args.outfile
+    if not outfile and args.inplace:
+        # If outfile wasn't provided then check for --inplace option
+        # Append ".bak" to infile
+        # Python cannot use the same file for different input/output streams
+        outfile = args.infile + ".bak"
+    if outfile:
+        out_file = open(outfile, "w", encoding="utf8")
 
     convert(
         in_file=in_file,
@@ -170,6 +218,8 @@ def main():
         drop_empty_lines=args.drop_empty_lines,
     )
 
+    if outfile.endswith(".bak"):
+        os.rename(outfile, args.infile)
 
 if __name__ == "__main__":
     main()
