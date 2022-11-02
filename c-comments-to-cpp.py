@@ -56,7 +56,7 @@ def convert(in_file, out_file, keep_empty_start_end, drop_empty_lines):
             else:
                 if inside_c_comment:
                     if inside_indentation:
-                        # Check for transition from inside of indentation white space to real comments
+                        # Check for transition from indentation white space to real comments
                         if (k >= comment_indent) or not (line[k] in [" ", "\t"]):
                             inside_indentation = False
                             # Consume up to len(comment_style) chars from the line.
@@ -118,7 +118,8 @@ def convert(in_file, out_file, keep_empty_start_end, drop_empty_lines):
                             # Ridiculous case of a completely empty, single line C-style comment
                             inside_c_comment = False
                             start_or_end_line = True
-                            # Workaround to replace it as C++ comment, user settings will decide write circumstances
+                            # Workaround to replace it as C++ comment first,
+                            # user settings will decide write circumstances as usual.
                             out_line += comment_style
                             break
                         if k < len(line) and (line[k] == "*" or line[k] == "!"):
@@ -219,6 +220,7 @@ def main():
 
     if outfile.endswith(".bak"):
         os.rename(outfile, args.infile)
+
 
 if __name__ == "__main__":
     main()
