@@ -118,6 +118,8 @@ def convert(in_file, out_file, keep_empty_start_end, drop_empty_lines):
                             # Ridiculous case of a completely empty, single line C-style comment
                             inside_c_comment = False
                             start_or_end_line = True
+                            # Workaround to replace it as C++ comment, user settings will decide write circumstances
+                            out_line += comment_style
                             break
                         if k < len(line) and (line[k] == "*" or line[k] == "!"):
                             if (k + 1) >= len(line) or line[k + 1] != "*":
@@ -144,9 +146,6 @@ def convert(in_file, out_file, keep_empty_start_end, drop_empty_lines):
                                 # Separate `if not`` instead of duplicate codes in multiple `else`
                                 # Accidental Doxygen comment. Skip the fisrt extra '/'
                                 first += 1
-                                if (first + 2) >= len(line):
-                                    # Skip empty comment
-                                    first = len(line)
                         out_line += line[first:]
                         k = len(line)
                     else:
@@ -183,7 +182,7 @@ def main():
     )
     parser.add_argument(
         "--drop-empty-lines",
-        action="store_true",
+        action="store_false",
         help="drop empty lines in comment blocks",
     )
     parser.add_argument(
